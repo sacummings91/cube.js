@@ -2,10 +2,11 @@ use crate::{
     compile::{
         engine::provider::CubeContext,
         rewrite::{
-            agg_fun_expr, analysis::LogicalPlanAnalysis, binary_expr, cast_expr, column_expr,
-            fun_expr, literal_expr, literal_number, literal_string, negative_expr, rewrite,
-            rewriter::RewriteRules, to_day_interval_expr, transforming_rewrite, udf_expr,
-            CastExprDataType, LiteralExprValue, LogicalPlanLanguage,
+            agg_fun_expr, analysis::LogicalPlanAnalysis, binary_expr, cast_expr,
+            cast_expr_explicit, column_expr, fun_expr, literal_expr, literal_number,
+            literal_string, negative_expr, rewrite, rewriter::RewriteRules, to_day_interval_expr,
+            transforming_rewrite, udf_expr, CastExprDataType, LiteralExprValue,
+            LogicalPlanLanguage,
         },
     },
     var, var_iter,
@@ -277,6 +278,109 @@ impl RewriteRules for DateRules {
                         fun_expr("Now", Vec::<String>::new()),
                         literal_expr("?interval"),
                     ],
+                ),
+            ),
+            rewrite(
+                "skyvia-day-to-date-trunc",
+                cast_expr_explicit(
+                    cast_expr_explicit(
+                        fun_expr(
+                            "DateTrunc",
+                            vec![literal_string("day"), column_expr("?column")],
+                        ),
+                        DataType::Date32,
+                    ),
+                    DataType::Utf8,
+                ),
+                fun_expr(
+                    "DateTrunc",
+                    vec![literal_string("day"), column_expr("?column")],
+                ),
+            ),
+            rewrite(
+                "skyvia-month-to-date-trunc",
+                binary_expr(
+                    binary_expr(
+                        fun_expr(
+                            "DatePart",
+                            vec![literal_string("YEAR"), column_expr("?column")],
+                        ),
+                        "||",
+                        literal_string(","),
+                    ),
+                    "||",
+                    fun_expr(
+                        "Lpad",
+                        vec![
+                            cast_expr_explicit(
+                                fun_expr(
+                                    "DatePart",
+                                    vec![literal_string("MONTH"), column_expr("?column")],
+                                ),
+                                DataType::Utf8,
+                            ),
+                            literal_number(2),
+                            literal_string("0"),
+                        ],
+                    ),
+                ),
+                udf_expr(
+                    "to_char",
+                    vec![
+                        fun_expr(
+                            "DateTrunc",
+                            vec![literal_string("MONTH"), column_expr("?column")],
+                        ),
+                        literal_string("YYYY,MM"),
+                    ],
+                ),
+            ),
+            rewrite(
+                "skyvia-quarter-to-date-trunc",
+                binary_expr(
+                    binary_expr(
+                        cast_expr_explicit(
+                            fun_expr(
+                                "DatePart",
+                                vec![literal_string("YEAR"), column_expr("?column")],
+                            ),
+                            DataType::Utf8,
+                        ),
+                        "||",
+                        literal_string(","),
+                    ),
+                    "||",
+                    cast_expr_explicit(
+                        fun_expr(
+                            "DatePart",
+                            vec![literal_string("QUARTER"), column_expr("?column")],
+                        ),
+                        DataType::Utf8,
+                    ),
+                ),
+                udf_expr(
+                    "to_char",
+                    vec![
+                        fun_expr(
+                            "DateTrunc",
+                            vec![literal_string("QUARTER"), column_expr("?column")],
+                        ),
+                        literal_string("YYYY,Q"),
+                    ],
+                ),
+            ),
+            rewrite(
+                "skyvia-year-to-date-trunc",
+                cast_expr_explicit(
+                    fun_expr(
+                        "DatePart",
+                        vec![literal_string("YEAR"), column_expr("?column")],
+                    ),
+                    DataType::Utf8,
+                ),
+                fun_expr(
+                    "DatePart",
+                    vec![literal_string("YEAR"), column_expr("?column")],
                 ),
             ),
             transforming_rewrite(
